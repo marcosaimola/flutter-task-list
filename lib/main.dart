@@ -15,8 +15,12 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
 
+
+
   final _todoListController = TextEditingController();
   List _todoList = [];
+  Map<String, dynamic> _lastRemoved;
+  int _lastRemovedPos;
 
   @override
   Widget build(BuildContext context) {
@@ -53,29 +57,86 @@ class _HomeState extends State<Home> {
             ),
           ),
           Expanded(
+            child: RefreshIndicator(onRefresh: _refresh,
             child: ListView.builder(
-              padding: EdgeInsets.only(top: 10.0),
+                padding: EdgeInsets.only(top: 10.0),
                 itemCount: _todoList.length,
-                itemBuilder: (context,index){
-                return CheckboxListTile(
-                  onChanged: (c){
-                    setState(() {
-                      _todoList[index]["ok"] = c;
-                    });
-                  },
-                  title: Text(_todoList[index]["title"]),
-                  value: _todoList[index]["ok"],
-                  secondary: CircleAvatar(
-                    child: Icon(_todoList[index]["ok"] ? Icons.check : Icons.error)
-                    ,),
-                );
-                }
-            ),
+                itemBuilder: buildItem
+            ),)
           )
         ],
       ),
     );
   }
+
+
+  Widget buildItem (context,index){
+    return Dismissible(
+      key: Key(DateTime.now().millisecondsSinceEpoch.toString()),
+      background: Container(
+        color: Colors.red,
+        child: Align(
+          child: Icon(Icons.delete_forever, color: Colors.white,),
+          alignment: Alignment(-0.9, 0.0),
+        ),
+      ),
+      direction: DismissDirection.startToEnd,
+      child: CheckboxListTile(
+        onChanged: (c){
+          setState(() {
+            _todoList[index]["ok"] = c;
+            _saveData();
+          });
+        },
+        title: Text(_todoList[index]["title"]),
+        value: _todoList[index]["ok"],
+        secondary: CircleAvatar(
+          child: Icon(_todoList[index]["ok"] ? Icons.check : Icons.error)
+          ,),
+      ),
+      onDismissed: (direction){
+        setState(() {
+          _lastRemoved = Map.from(_todoList[index]);
+          _lastRemovedPos = index;
+          _todoList.removeAt(index);
+          _saveData();
+
+          // showing the snackBar
+          final snack = SnackBar(
+            content: Text("Tarefa ${_lastRemoved["title"]} removida."),
+            action: SnackBarAction(
+              label: "Desfazer",
+              onPressed: (){
+                setState(() {
+                  _todoList.insert(_lastRemovedPos, _lastRemoved);
+                  _saveData();
+                });
+              },
+            ),
+            duration: Duration(seconds: 2),
+          );
+          Scaffold.of(context).removeCurrentSnackBar();
+          Scaffold.of(context).showSnackBar(snack);
+        });
+      },
+    );
+  }
+
+  Future<Null> _refresh() async{
+    await Future.delayed(Duration(seconds: 1));
+
+        setState(() {
+          _todoList.sort((a,b){
+          if(a["ok"] &&  !b["ok"]) return 1;
+          else if(!a["ok"] && b["ok"]) return -1;
+          else return 0;
+        });
+          _saveData();
+    });
+
+  return null;
+  }
+
 
   void _addTodo(){
     setState(() {
@@ -84,6 +145,7 @@ class _HomeState extends State<Home> {
       _todoListController.text = "";
       newTodo["ok"] = false;
       _todoList.add(newTodo);
+      _saveData();
     });
   }
 
@@ -109,4 +171,14 @@ class _HomeState extends State<Home> {
     }
   }
 
+  @override
+  void initState() {
+    super.initState();
+
+    _readData().then((value) {
+      setState(() {
+        _todoList = json.decode(value);
+      });
+    });
+  }
 }
